@@ -1,4 +1,4 @@
-name: Abet3 Agent CI/CD
+name: Abet3 Local AI Agent
 
 on:
   push:
@@ -6,9 +6,14 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      goal:
+        description: 'Objetivo ou comando para a IA local resolver'
+        required: true
+        default: 'Escreva um script Python de automação e teste-o'
 
 jobs:
-  build-and-test:
+  run-local-ai:
     runs-on: ubuntu-latest
 
     steps:
@@ -19,15 +24,52 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-        cache: 'pip'
 
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install requests
 
-    - name: Run Lint and Tests
+    - name: Set up Ollama (Local AI Server)
       run: |
-        echo "🚀 Rodando testes do Abet3 Agent..."
-        python -c "print('Abet3 Workflow executado com sucesso!')"
+        echo "🚀 Instalando e iniciando o Ollama para rodar IA localmente..."
+        curl -fsSL https://ollama.com/install.sh | sh
+        
+        # Iniciar o servidor Ollama em background
+        ollama serve &
+        
+        # Aguardar o servidor subir
+        sleep 5
+        
+        # Baixar um modelo leve e rápido (ex: phi3 ou llama3)
+        echo "📥 Baixando o modelo local (phi3)..."
+        ollama pull phi3
+
+    - name: Run Agent with Local AI
+      run: |
+        python -c '
+import requests
+import json
+
+url = "http://localhost:11434/api/generate"
+goal = "${{ github.event.inputs.goal || 'Criar estrutura e testar código' }}"
+
+payload = {
+    "model": "phi3",
+    "prompt": f"Você é o Abet3, um agente autônomo de programação. Resolva este objetivo quebrando a cabeça e gerando os comandos necessários: {goal}",
+    "stream": False
+}
+
+print(f"🎯 Enviando objetivo para a IA local (Ollama / phi3): {goal}")
+try:
+    response = requests.post(url, json=payload, timeout=120)
+    if response.status_code == 200:
+        result = response.json().get("response", "Sem resposta")
+        print("🤖 Resposta da IA Local:")
+        print(result)
+    else:
+        print(f"⚠️ Erro na resposta da IA local: {response.text}")
+except Exception as e:
+    print(f"❌ Falha ao conectar com o servidor Ollama local: {e}")
+        '
         
